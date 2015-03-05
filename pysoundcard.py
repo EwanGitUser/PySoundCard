@@ -669,13 +669,13 @@ class Stream(InputStream, OutputStream):
 def _get_stream_parameters(kind, device, channels, dtype, latency, samplerate):
     """Generate PaStreamParameters struct."""
     if device is None:
-        device = default[kind].device
+        device = default.device[kind]
     if channels is None:
-        channels = default[kind].channels
+        channels = default.channels[kind]
     if dtype is None:
-        dtype = default[kind].dtype
+        dtype = default.dtype[kind]
     if latency is None:
-        latency = default[kind].latency
+        latency = default.latency[kind]
     if samplerate is None:
         samplerate = default.samplerate
 
@@ -727,33 +727,28 @@ def _unique(ivalue, ovalue):
     return ivalue if ivalue == ovalue else (ivalue, ovalue)
 
 
-class _InputOutputDescriptor(object):
-    def __init__(self, gettername, settername=None):
-        self.gettername = gettername
-        self.settername = gettername if settername is None else settername
+class _InputOutputPair(object):
 
-    def __get__(self, obj, objclass):
-        invalue, outvalue = _split(getattr(obj._defaults, self.gettername))
-        return invalue if obj._isinput else outvalue
+    _indexmapping = {'input': 0, 'output': 1}
 
-    def __set__(self, obj, value):
-        invalue, outvalue = _split(getattr(obj._defaults, self.settername))
-        if obj._isinput and value != outvalue:
-            value = value, outvalue
-        elif not obj._isinput and value != invalue:
-            value = invalue, value
-        setattr(obj._defaults, self.settername, value)
+    def __init__(self, parent, default_attr):
+        self._pair = [None, None]
+        self._parent = parent
+        self._default_attr = default_attr
 
+    def __getitem__(self, index):
+        index = self._indexmapping.get(index, index)
+        value = self._pair[index]
+        if value is None:
+            value = getattr(self._parent, self._default_attr)[index]
+        return value
 
-class _InputOutputDefaults(object):
-    def __init__(self, isinput, defaults):
-        self._isinput = isinput
-        self._defaults = defaults
+    def __setitem__(self, index, value):
+        index = self._indexmapping.get(index, index)
+        self._pair[index] = value
 
-    device = _InputOutputDescriptor('device', '_device')
-    channels = _InputOutputDescriptor('channels')
-    dtype = _InputOutputDescriptor('dtype')
-    latency = _InputOutputDescriptor('latency')
+    def __repr__(self):
+        return "[{0[0]!r}, {0[1]!r}]".format(self)
 
 
 class _Defaults(object):
@@ -762,13 +757,21 @@ class _Defaults(object):
 
     :attr:`default` is the only instance of this class.
 
+    The attributes :attr:`device`, :attr:`channels`, :attr:`dtype` and
+    :attr:`latency` accept single values which specify the given
+    property for both input and output.
+    However, if the property differs between input and output, pairs of
+    values can be used, where the first value specifies the input and
+    the second value specifies the output.
+    All other attributes are always single values.
+
     """
-
-    _device = None
-
-    channels = None
-    dtype = 'float32'
-    latency = 0
+    # The class attributes device, channels, dtype and latency are only
+    # provided for static analysis tools.  They're overwritten in __init__().
+    device = None, None
+    channels = _default_channels = None, None
+    dtype = _default_dtype = 'float32', 'float32'
+    latency = _default_latency = 0, 0
 
     samplerate = None
     blocksize = 0
@@ -777,38 +780,26 @@ class _Defaults(object):
     never_drop_input = False
     prime_output_buffers_using_stream_callback = False
 
+    def __init__(self):
+        # __setattr__() must be avoided here
+        vars(self)['device'] = _InputOutputPair(self, '_default_device')
+        vars(self)['channels'] = _InputOutputPair(self, '_default_channels')
+        vars(self)['dtype'] = _InputOutputPair(self, '_default_dtype')
+        vars(self)['latency'] = _InputOutputPair(self, '_default_latency')
+
     def __setattr__(self, name, value):
         """Only allow setting existing attributes."""
-        if name in dir(self):
+        if name in ('device', 'channels', 'dtype', 'latency'):
+            getattr(self, name)._pair[:] = _split(value)
+        elif name in dir(self) and name != 'reset':
             object.__setattr__(self, name, value)
         else:
             raise AttributeError(
                 "'default' object has no attribute %s" % repr(name))
 
-    def __getitem__(self, kind):
-        if kind in ('in', 'input'):
-            isinput = True
-        elif kind in ('out', 'output'):
-            isinput = False
-        else:
-            raise KeyError(kind)
-        return _InputOutputDefaults(isinput, self)
-
     @property
-    def device(self):
-        invalue, outvalue = _split(self._device)
-        if any([invalue is None, outvalue is None]):
-            if invalue is None:
-                invalue = _pa.Pa_GetDefaultInputDevice()
-            if outvalue is None:
-                outvalue = _pa.Pa_GetDefaultOutputDevice()
-            return _unique(invalue, outvalue)
-        else:
-            return self._device
-
-    @device.setter
-    def device(self, value):
-        self._device = value
+    def _default_device(self):
+        return _pa.Pa_GetDefaultInputDevice(), _pa.Pa_GetDefaultOutputDevice()
 
     @property
     def hostapi(self):
@@ -817,6 +808,8 @@ class _Defaults(object):
     def reset(self):
         """Reset all attributes to their "factory default"."""
         self.__dict__ = {}
+        self.__init__()
+
 
 default = _Defaults()
 """Module defaults."""
