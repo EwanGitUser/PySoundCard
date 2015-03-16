@@ -713,13 +713,23 @@ def _time2dict(time):
 def _split(value):
     """Split input/output value into two values."""
     if isinstance(value, str):
-        # str is iterable, which would interfere with tuple unpacking
+        # iterable, but not meant for splitting
         return value, value
     try:
-        invalue, outvalue = value
-    except (TypeError, ValueError):
-        invalue = outvalue = value
-    return invalue, outvalue
+        it = iter(value)
+    except TypeError:
+        return value, value
+    try:
+        invalue = next(it)
+        outvalue = next(it)
+    except StopIteration:
+        raise ValueError("Iterables must have exactly two items")
+    try:
+        next(it)
+    except StopIteration:
+        return invalue, outvalue
+    else:
+        raise ValueError("Iterables must have exactly two items")
 
 
 def _unique(ivalue, ovalue):
