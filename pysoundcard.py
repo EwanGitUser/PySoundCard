@@ -716,20 +716,12 @@ def _split(value):
         # iterable, but not meant for splitting
         return value, value
     try:
-        it = iter(value)
+        invalue, outvalue = value
     except TypeError:
-        return value, value
-    try:
-        invalue = next(it)
-        outvalue = next(it)
-    except StopIteration:
-        raise ValueError("Iterables must have exactly two items")
-    try:
-        next(it)
-    except StopIteration:
-        return invalue, outvalue
-    else:
-        raise ValueError("Iterables must have exactly two items")
+        invalue = outvalue = value
+    except ValueError:
+        raise ValueError("Only single values and pairs are allowed")
+    return invalue, outvalue
 
 
 def _unique(ivalue, ovalue):
