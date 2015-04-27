@@ -328,7 +328,7 @@ class _StreamBase(object):
         elif not iparameters:
             self.latency = info.outputLatency
         else:
-            self.latency = _unique(info.inputLatency, info.outputLatency)
+            self.latency = info.inputLatency, info.outputLatency
 
         if finished_callback:
 
@@ -645,11 +645,11 @@ class Stream(InputStream, OutputStream):
             'input', idevice, ichannels, idtype, ilatency, samplerate)
         oparameters, odtype, osamplerate = _get_stream_parameters(
             'output', odevice, ochannels, odtype, olatency, samplerate)
-        self.dtype = _unique(idtype, odtype)
-        self.device = _unique(iparameters.device, oparameters.device)
+        self.dtype = idtype, odtype
+        self.device = iparameters.device, oparameters.device
         ichannels = iparameters.channelCount
         ochannels = oparameters.channelCount
-        self.channels = _unique(ichannels, ochannels)
+        self.channels = ichannels, ochannels
         if isamplerate != osamplerate:
             raise RuntimeError(
                 "Input and output device must have the same samplerate")
@@ -722,11 +722,6 @@ def _split(value):
     except ValueError:
         raise ValueError("Only single values and pairs are allowed")
     return invalue, outvalue
-
-
-def _unique(ivalue, ovalue):
-    """Return a single value if values are the same, a tuple if not."""
-    return ivalue if ivalue == ovalue else (ivalue, ovalue)
 
 
 class _InputOutputPair(object):
